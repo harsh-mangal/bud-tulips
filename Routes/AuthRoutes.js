@@ -31,13 +31,20 @@ router.post('/signup', async (req, res) => {
         const newUser = new User({ firstName, lastName, email, password: hashedPassword });
         const savedUser = await newUser.save();
 
-        // // Generate token
-        // const token = jwt.sign({ id: savedUser._id }, process.env.JWT_SECRET, { expiresIn: '2h' });
-        // savedUser.token = token;
-        // savedUser.password = undefined;
+        // Generate token
+        const token = jwt.sign({ id: savedUser._id }, 'shhhh', { expiresIn: '2h' });
 
         // Send response
-        res.status(201).json({ message: 'User created successfully' });
+        res.status(201).json({
+            message: 'User created successfully',
+            user: {
+                id: savedUser._id,
+                firstName: savedUser.firstName,
+                lastName: savedUser.lastName,
+                email: savedUser.email,
+                token,
+            }
+        });
     } catch (error) {
         console.error('Error creating user:', error);
         res.status(500).json({ message: 'Error creating user', error });
@@ -61,16 +68,44 @@ router.post('/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-        // // Generate token
-        // const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        // user.token = token;
-        // user.password = undefined;
+        // Generate token
+        const token = jwt.sign({ id: user._id }, 'shhhh', { expiresIn: '1h' });
 
         // Send response
-        res.json({ message: 'Login successful' });
+        res.json({
+            message: 'Login successful',
+            user: {
+                id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                token,
+            }
+        });
     } catch (error) {
         console.error('Error logging in:', error);
         res.status(500).json({ message: 'Error logging in', error });
+    }
+});
+router.get('/users', async (req, res) => {
+    try {
+        const users = await User.find({});
+        res.json(users);
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ message: 'Error fetching users', error });
+    }
+});
+
+// Get User by ID Route
+router.get('/users/:id', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.json(user);
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        res.status(500).json({ message: 'Error fetching user', error });
     }
 });
 
