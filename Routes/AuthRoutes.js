@@ -9,6 +9,7 @@ dotenv.config();
 const router = express.Router();
 
 // Signup Route
+// Signup Route
 router.post('/signup', async (req, res) => {
     const { firstName, lastName, email, password } = req.body;
     try {
@@ -27,8 +28,14 @@ router.post('/signup', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create a new user
-        const newUser = new User({ firstName, lastName, email, password: hashedPassword });
+        // Create a new user with the current date as the account creation date
+        const newUser = new User({ 
+            firstName, 
+            lastName, 
+            email, 
+            password: hashedPassword, 
+            createdAt: new Date() 
+        });
         const savedUser = await newUser.save();
 
         // Generate token
@@ -42,6 +49,7 @@ router.post('/signup', async (req, res) => {
                 firstName: savedUser.firstName,
                 lastName: savedUser.lastName,
                 email: savedUser.email,
+                createdAt: savedUser.createdAt, // Include account creation date
                 token,
             }
         });
@@ -51,22 +59,49 @@ router.post('/signup', async (req, res) => {
     }
 });
 
+
+// Login Route
 // Login Route
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        // Check if all fields are provided
-        if (!email || !password) {
-            return res.status(400).send("All fields are required");
+        // Check if email is provided
+        if (!email) {
+            return res.status(400).send("Email is required");
         }
 
         // Find user by email
         const user = await User.findOne({ email });
         if (!user) return res.status(400).json({ message: 'User not found' });
 
+        // Handle guest login if password is not provided
+        if (!password) {
+            if (user.accountType !== 'guest') {
+                return res.status(400).json({ message: 'Invalid credentials' });
+            }
+
+            // Generate token
+            const token = jwt.sign({ id: user._id }, 'shhhh', { expiresIn: '1h' });
+
+            // Send response
+            return res.json({
+                message: 'Guest login successful',
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    accountType: user.accountType,
+                    token,
+                }
+            });
+        }
+
         // Check if password matches
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
+
+        // Update last login
+        user.lastLogin = new Date();
+        await user.save();
 
         // Generate token
         const token = jwt.sign({ id: user._id }, 'shhhh', { expiresIn: '1h' });
@@ -80,6 +115,7 @@ router.post('/login', async (req, res) => {
                 lastName: user.lastName,
                 email: user.email,
                 token,
+                lastLogin: user.lastLogin // Include the last login time in the response
             }
         });
     } catch (error) {
@@ -87,6 +123,49 @@ router.post('/login', async (req, res) => {
         res.status(500).json({ message: 'Error logging in', error });
     }
 });
+
+
+// Guest Signup Route
+// Guest Signup Route
+router.post('/guest-signup', async (req, res) => {
+    const { email } = req.body;
+    try {
+        // Check if email is provided
+        if (!email) {
+            return res.status(400).send("Email is required");
+        }
+
+        // Check if the user already exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Email already exists' });
+        }
+
+        // Create a new guest user with the current date as the account creation date
+        const newGuestUser = new User({ email, accountType: 'guest', createdAt: new Date() });
+        const savedGuestUser = await newGuestUser.save();
+
+        // Generate token
+        const token = jwt.sign({ id: savedGuestUser._id }, 'shhhh', { expiresIn: '1h' });
+
+        // Send response
+        res.status(201).json({
+            message: 'Guest user created successfully',
+            user: {
+                id: savedGuestUser._id,
+                email: savedGuestUser.email,
+                accountType: savedGuestUser.accountType,
+                createdAt: savedGuestUser.createdAt, // Include account creation date
+                token,
+            }
+        });
+    } catch (error) {
+        console.error('Error creating guest user:', error);
+        res.status(500).json({ message: 'Error creating guest user', error });
+    }
+});
+
+
 router.get('/users', async (req, res) => {
     try {
         const users = await User.find({});
